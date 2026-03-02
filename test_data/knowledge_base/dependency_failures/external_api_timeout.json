@@ -1,0 +1,31 @@
+{
+  "incident_id": "inc-2024-12-15-011",
+  "timestamp": "2024-12-15T10:00:00Z",
+  "service_name": "payment-gateway-client",
+  "failure_category": "dependency_failure",
+  "root_cause": "External payment gateway API experiencing high latency and timeouts",
+  "confidence_score": 87,
+  "error_message": "Connection timeout: payment-gateway.example.com:443",
+  "evidence": [
+    "15 consecutive connection timeouts",
+    "Payment gateway response time: >30 seconds",
+    "Internal service health checks passing",
+    "No network connectivity issues",
+    "Payment gateway status page reports degraded performance"
+  ],
+  "resolution": "Implemented circuit breaker pattern and increased timeout to 45 seconds",
+  "fix_commands": [
+    "Update application config: timeout=45s, circuit_breaker_threshold=5",
+    "Deploy updated application with circuit breaker library"
+  ],
+  "time_to_resolution": "30 minutes",
+  "preventive_measures": [
+    "Implement circuit breaker for all external dependencies",
+    "Add fallback mechanisms (retry with exponential backoff)",
+    "Monitor external service health proactively",
+    "Set up alerts for dependency failures",
+    "Consider multi-provider strategy for critical services"
+  ],
+  "similar_incidents": ["inc-2024-09-30-010", "inc-2024-11-05-013"],
+  "tags": ["external-api", "timeout", "dependency-failure", "circuit-breaker"]
+}

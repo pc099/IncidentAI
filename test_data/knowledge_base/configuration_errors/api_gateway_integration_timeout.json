@@ -1,0 +1,29 @@
+{
+  "incident_id": "inc-2024-11-20-002",
+  "timestamp": "2024-11-20T14:15:00Z",
+  "service_name": "payment-api-gateway",
+  "failure_category": "configuration_error",
+  "root_cause": "API Gateway integration timeout (29s) insufficient for backend service processing time",
+  "confidence_score": 88,
+  "error_message": "Endpoint request timed out",
+  "evidence": [
+    "API Gateway timeout: 29 seconds (maximum allowed)",
+    "Backend service average response time: 32 seconds",
+    "Backend service healthy and processing requests",
+    "No network connectivity issues"
+  ],
+  "resolution": "Implemented async processing pattern with callback mechanism",
+  "fix_commands": [
+    "Refactor to async pattern: API Gateway -> SQS -> Lambda -> Callback",
+    "aws sqs create-queue --queue-name payment-processing-queue",
+    "aws lambda create-function --function-name payment-processor-async"
+  ],
+  "time_to_resolution": "45 minutes",
+  "preventive_measures": [
+    "Use async processing for operations >10 seconds",
+    "Implement webhook callbacks for long-running tasks",
+    "Add request queuing with SQS"
+  ],
+  "similar_incidents": ["inc-2024-10-05-015"],
+  "tags": ["api-gateway", "timeout", "configuration", "async"]
+}

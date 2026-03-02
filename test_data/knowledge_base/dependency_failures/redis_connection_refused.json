@@ -1,0 +1,30 @@
+{
+  "incident_id": "inc-2024-12-20-015",
+  "timestamp": "2024-12-20T14:00:00Z",
+  "service_name": "session-cache-service",
+  "failure_category": "dependency_failure",
+  "root_cause": "ElastiCache Redis cluster unreachable due to security group misconfiguration",
+  "confidence_score": 90,
+  "error_message": "Error connecting to Redis: Connection refused",
+  "evidence": [
+    "Redis endpoint: cache-cluster.abc123.0001.use1.cache.amazonaws.com:6379",
+    "Connection attempts timing out",
+    "Security group rules updated 1 hour ago",
+    "Application security group removed from Redis ingress rules",
+    "Redis cluster status: available"
+  ],
+  "resolution": "Added application security group to Redis cluster security group ingress rules",
+  "fix_commands": [
+    "aws ec2 authorize-security-group-ingress --group-id sg-redis123 --protocol tcp --port 6379 --source-group sg-app456"
+  ],
+  "time_to_resolution": "8 minutes",
+  "preventive_measures": [
+    "Use infrastructure-as-code for security group rules",
+    "Document security group dependencies",
+    "Test connectivity after security group changes",
+    "Add CloudWatch alarm for Redis connection failures",
+    "Implement connection retry logic with exponential backoff"
+  ],
+  "similar_incidents": ["inc-2024-10-08-009"],
+  "tags": ["elasticache", "redis", "dependency-failure", "security-group", "network"]
+}

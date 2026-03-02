@@ -1,0 +1,29 @@
+{
+  "incident_id": "inc-2024-12-12-009",
+  "timestamp": "2024-12-12T19:30:00Z",
+  "service_name": "event-processor-lambda",
+  "failure_category": "resource_exhaustion",
+  "root_cause": "Account-level Lambda concurrent execution limit (1000) reached",
+  "confidence_score": 91,
+  "error_message": "Rate Exceeded: Lambda concurrent execution limit exceeded",
+  "evidence": [
+    "Account concurrent execution limit: 1000",
+    "Current concurrent executions: 1000",
+    "Event processor consuming 800 concurrent executions",
+    "Other functions throttled due to limit"
+  ],
+  "resolution": "Set reserved concurrency for critical functions and requested limit increase",
+  "fix_commands": [
+    "aws lambda put-function-concurrency --function-name critical-function --reserved-concurrent-executions 200",
+    "aws support create-case --subject 'Request Lambda concurrent execution limit increase' --service-code lambda --category-code general-guidance"
+  ],
+  "time_to_resolution": "20 minutes (immediate mitigation), 2 days (limit increase)",
+  "preventive_measures": [
+    "Set reserved concurrency for critical functions",
+    "Monitor concurrent executions with CloudWatch",
+    "Implement queue-based processing for high-volume workloads",
+    "Request limit increases proactively"
+  ],
+  "similar_incidents": [],
+  "tags": ["lambda", "concurrency", "resource-exhaustion", "throttling"]
+}

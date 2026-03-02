@@ -1,0 +1,29 @@
+{
+  "incident_id": "inc-2024-12-05-007",
+  "timestamp": "2024-12-05T16:45:00Z",
+  "service_name": "session-manager",
+  "failure_category": "resource_exhaustion",
+  "root_cause": "DynamoDB write capacity (5 WCU) insufficient for traffic spike",
+  "confidence_score": 94,
+  "error_message": "ProvisionedThroughputExceededException",
+  "evidence": [
+    "Provisioned write capacity: 5 WCU",
+    "Consumed write capacity: 45 WCU",
+    "Throttled requests: 40 per second",
+    "Traffic spike: 10x normal load"
+  ],
+  "resolution": "Enabled DynamoDB auto-scaling with target utilization 70%",
+  "fix_commands": [
+    "aws application-autoscaling register-scalable-target --service-namespace dynamodb --resource-id table/session-manager --scalable-dimension dynamodb:table:WriteCapacityUnits --min-capacity 5 --max-capacity 50",
+    "aws application-autoscaling put-scaling-policy --service-namespace dynamodb --resource-id table/session-manager --scalable-dimension dynamodb:table:WriteCapacityUnits --policy-name session-manager-write-scaling --policy-type TargetTrackingScaling --target-tracking-scaling-policy-configuration '{\"TargetValue\":70.0,\"PredefinedMetricSpecification\":{\"PredefinedMetricType\":\"DynamoDBWriteCapacityUtilization\"}}'"
+  ],
+  "time_to_resolution": "10 minutes",
+  "preventive_measures": [
+    "Enable auto-scaling for all production tables",
+    "Consider on-demand billing for unpredictable workloads",
+    "Implement exponential backoff in application code",
+    "Monitor consumed vs provisioned capacity"
+  ],
+  "similar_incidents": ["inc-2024-10-12-014", "inc-2024-11-08-018"],
+  "tags": ["dynamodb", "throttling", "resource-exhaustion", "auto-scaling"]
+}

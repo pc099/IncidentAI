@@ -1,0 +1,27 @@
+{
+  "incident_id": "inc-2024-12-10-004",
+  "timestamp": "2024-12-10T16:20:00Z",
+  "service_name": "notification-sender",
+  "failure_category": "configuration_error",
+  "root_cause": "Missing environment variable for SES sender email address",
+  "confidence_score": 95,
+  "error_message": "KeyError: 'SENDER_EMAIL'",
+  "evidence": [
+    "Lambda function code references os.environ['SENDER_EMAIL']",
+    "Environment variable not configured in Lambda",
+    "Error occurs immediately on function invocation",
+    "100% failure rate"
+  ],
+  "resolution": "Added SENDER_EMAIL environment variable to Lambda configuration",
+  "fix_commands": [
+    "aws lambda update-function-configuration --function-name notification-sender --environment Variables={SENDER_EMAIL=notifications@example.com}"
+  ],
+  "time_to_resolution": "3 minutes",
+  "preventive_measures": [
+    "Use infrastructure-as-code to manage environment variables",
+    "Add validation checks for required environment variables at startup",
+    "Document all required environment variables in README"
+  ],
+  "similar_incidents": ["inc-2024-09-12-008", "inc-2024-10-22-019"],
+  "tags": ["lambda", "environment-variable", "configuration"]
+}

@@ -1,0 +1,30 @@
+{
+  "incident_id": "inc-2024-11-30-008",
+  "timestamp": "2024-11-30T08:15:00Z",
+  "service_name": "production-postgres-db",
+  "failure_category": "resource_exhaustion",
+  "root_cause": "RDS storage capacity (100 GB) exhausted due to log accumulation",
+  "confidence_score": 97,
+  "error_message": "ERROR: could not extend file - No space left on device",
+  "evidence": [
+    "Allocated storage: 100 GB",
+    "Used storage: 99.8 GB",
+    "WAL files: 15 GB",
+    "Audit logs: 25 GB",
+    "Auto-scaling storage not enabled"
+  ],
+  "resolution": "Increased storage to 200 GB and enabled storage auto-scaling",
+  "fix_commands": [
+    "aws rds modify-db-instance --db-instance-identifier production-postgres-db --allocated-storage 200 --apply-immediately",
+    "aws rds modify-db-instance --db-instance-identifier production-postgres-db --max-allocated-storage 500"
+  ],
+  "time_to_resolution": "15 minutes (plus storage scaling time)",
+  "preventive_measures": [
+    "Enable storage auto-scaling",
+    "Configure log rotation and archival",
+    "Monitor storage usage with CloudWatch alarms",
+    "Set alarm at 80% storage utilization"
+  ],
+  "similar_incidents": ["inc-2024-08-22-005"],
+  "tags": ["rds", "storage", "resource-exhaustion", "postgresql"]
+}

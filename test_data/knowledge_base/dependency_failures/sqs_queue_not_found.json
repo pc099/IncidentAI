@@ -1,0 +1,31 @@
+{
+  "incident_id": "inc-2024-12-03-013",
+  "timestamp": "2024-12-03T11:15:00Z",
+  "service_name": "order-processor",
+  "failure_category": "dependency_failure",
+  "root_cause": "SQS queue deleted accidentally, causing message send failures",
+  "confidence_score": 99,
+  "error_message": "AWS.SimpleQueueService.NonExistentQueue: The specified queue does not exist",
+  "evidence": [
+    "SQS queue URL: https://sqs.us-east-1.amazonaws.com/123456789012/order-queue",
+    "Queue not found in AWS console",
+    "CloudTrail shows DeleteQueue API call at 11:00 AM",
+    "Application attempting to send messages to deleted queue"
+  ],
+  "resolution": "Recreated SQS queue and updated application configuration",
+  "fix_commands": [
+    "aws sqs create-queue --queue-name order-queue --attributes VisibilityTimeout=300,MessageRetentionPeriod=345600",
+    "aws sqs set-queue-attributes --queue-url <new-queue-url> --attributes file://queue-policy.json",
+    "Update application config with new queue URL"
+  ],
+  "time_to_resolution": "15 minutes",
+  "preventive_measures": [
+    "Enable deletion protection for critical queues",
+    "Use infrastructure-as-code to manage queue configuration",
+    "Implement queue existence checks before sending messages",
+    "Add CloudWatch alarm for queue not found errors",
+    "Restrict DeleteQueue permissions"
+  ],
+  "similar_incidents": [],
+  "tags": ["sqs", "queue", "dependency-failure", "configuration"]
+}

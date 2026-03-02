@@ -1,0 +1,28 @@
+{
+  "incident_id": "inc-2024-12-18-005",
+  "timestamp": "2024-12-18T11:30:00Z",
+  "service_name": "data-export-lambda",
+  "failure_category": "configuration_error",
+  "root_cause": "Lambda IAM role missing S3 PutObject permission",
+  "confidence_score": 98,
+  "error_message": "AccessDenied: User is not authorized to perform: s3:PutObject",
+  "evidence": [
+    "Lambda attempting to write to S3 bucket",
+    "IAM role has S3 GetObject but not PutObject",
+    "Error occurs during S3 write operation",
+    "Consistent failure across all invocations"
+  ],
+  "resolution": "Added S3 PutObject permission to Lambda IAM role",
+  "fix_commands": [
+    "aws iam put-role-policy --role-name data-export-lambda-role --policy-name S3WriteAccess --policy-document '{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":[\"s3:PutObject\"],\"Resource\":\"arn:aws:s3:::export-bucket/*\"}]}'"
+  ],
+  "time_to_resolution": "5 minutes",
+  "preventive_measures": [
+    "Follow principle of least privilege",
+    "Test IAM permissions in staging environment",
+    "Use IAM policy simulator to validate permissions",
+    "Document required permissions in deployment guide"
+  ],
+  "similar_incidents": ["inc-2024-11-03-012"],
+  "tags": ["lambda", "iam", "permissions", "configuration", "s3"]
+}

@@ -1,0 +1,29 @@
+{
+  "incident_id": "inc-2024-11-22-014",
+  "timestamp": "2024-11-22T09:30:00Z",
+  "service_name": "report-generator",
+  "failure_category": "dependency_failure",
+  "root_cause": "S3 bucket policy changed, blocking Lambda function access",
+  "confidence_score": 96,
+  "error_message": "AccessDenied: Access Denied to S3 bucket reports-archive",
+  "evidence": [
+    "Lambda attempting to write to s3://reports-archive/",
+    "S3 bucket policy updated 30 minutes ago",
+    "New policy missing Lambda execution role ARN",
+    "Previous writes successful before policy change"
+  ],
+  "resolution": "Updated S3 bucket policy to include Lambda execution role",
+  "fix_commands": [
+    "aws s3api put-bucket-policy --bucket reports-archive --policy file://bucket-policy.json"
+  ],
+  "time_to_resolution": "10 minutes",
+  "preventive_measures": [
+    "Use infrastructure-as-code for bucket policies",
+    "Test policy changes in staging before production",
+    "Add CloudWatch alarm for S3 access denied errors",
+    "Document all services requiring bucket access",
+    "Implement policy validation in CI/CD pipeline"
+  ],
+  "similar_incidents": ["inc-2024-08-14-006"],
+  "tags": ["s3", "access-denied", "dependency-failure", "bucket-policy"]
+}

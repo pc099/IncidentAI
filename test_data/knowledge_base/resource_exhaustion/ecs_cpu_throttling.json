@@ -1,0 +1,29 @@
+{
+  "incident_id": "inc-2024-12-08-010",
+  "timestamp": "2024-12-08T14:50:00Z",
+  "service_name": "api-backend-ecs",
+  "failure_category": "resource_exhaustion",
+  "root_cause": "ECS task CPU limit (0.5 vCPU) insufficient for request processing",
+  "confidence_score": 89,
+  "error_message": "High CPU utilization causing request timeouts",
+  "evidence": [
+    "ECS task CPU: 0.5 vCPU",
+    "CPU utilization: 98-100%",
+    "Request latency: 5-10 seconds (normal: <1 second)",
+    "Task count: 10 (at maximum)"
+  ],
+  "resolution": "Increased task CPU to 1 vCPU and enabled auto-scaling",
+  "fix_commands": [
+    "aws ecs register-task-definition --family api-backend --cpu 1024 --memory 2048 --container-definitions file://container-def.json",
+    "aws ecs update-service --cluster production --service api-backend --task-definition api-backend:2 --force-new-deployment"
+  ],
+  "time_to_resolution": "25 minutes",
+  "preventive_measures": [
+    "Monitor ECS CPU utilization",
+    "Enable auto-scaling based on CPU/memory",
+    "Right-size tasks based on load testing",
+    "Set CloudWatch alarms for CPU >70%"
+  ],
+  "similar_incidents": ["inc-2024-10-28-016"],
+  "tags": ["ecs", "cpu", "resource-exhaustion", "performance"]
+}

@@ -1,0 +1,28 @@
+{
+  "incident_id": "inc-2024-11-25-006",
+  "timestamp": "2024-11-25T13:20:00Z",
+  "service_name": "image-processor-lambda",
+  "failure_category": "resource_exhaustion",
+  "root_cause": "Lambda function memory limit (512 MB) exceeded during image processing",
+  "confidence_score": 96,
+  "error_message": "Runtime exited with error: signal: killed Runtime.ExitError",
+  "evidence": [
+    "Lambda memory configuration: 512 MB",
+    "Peak memory usage: 520 MB",
+    "Processing large images (>10 MB)",
+    "Memory usage increases linearly with image size"
+  ],
+  "resolution": "Increased Lambda memory from 512 MB to 1024 MB",
+  "fix_commands": [
+    "aws lambda update-function-configuration --function-name image-processor --memory-size 1024"
+  ],
+  "time_to_resolution": "3 minutes",
+  "preventive_measures": [
+    "Monitor Lambda memory usage metrics",
+    "Add CloudWatch alarm for memory usage >80%",
+    "Implement image size validation before processing",
+    "Consider streaming processing for large files"
+  ],
+  "similar_incidents": ["inc-2024-09-18-007"],
+  "tags": ["lambda", "memory", "resource-exhaustion"]
+}

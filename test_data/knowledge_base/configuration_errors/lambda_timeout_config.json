@@ -1,0 +1,27 @@
+{
+  "incident_id": "inc-2024-11-15-001",
+  "timestamp": "2024-11-15T10:30:00Z",
+  "service_name": "order-processor-lambda",
+  "failure_category": "configuration_error",
+  "root_cause": "Lambda function timeout set too low (3 seconds) for database query operations",
+  "confidence_score": 92,
+  "error_message": "Task timed out after 3.00 seconds",
+  "evidence": [
+    "Lambda timeout configuration: 3 seconds",
+    "Database query execution time: 4.2 seconds average",
+    "No errors in database logs",
+    "Function memory usage: 45% (well below limit)"
+  ],
+  "resolution": "Increased Lambda timeout from 3 seconds to 10 seconds",
+  "fix_commands": [
+    "aws lambda update-function-configuration --function-name order-processor --timeout 10"
+  ],
+  "time_to_resolution": "5 minutes",
+  "preventive_measures": [
+    "Set timeout based on 95th percentile execution time",
+    "Add CloudWatch alarm for timeout errors",
+    "Implement query optimization for long-running operations"
+  ],
+  "similar_incidents": [],
+  "tags": ["lambda", "timeout", "configuration", "database"]
+}

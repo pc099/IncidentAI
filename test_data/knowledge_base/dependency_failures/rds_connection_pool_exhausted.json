@@ -1,0 +1,32 @@
+{
+  "incident_id": "inc-2024-11-28-012",
+  "timestamp": "2024-11-28T15:45:00Z",
+  "service_name": "api-backend",
+  "failure_category": "dependency_failure",
+  "root_cause": "RDS connection pool exhausted due to connection leaks",
+  "confidence_score": 93,
+  "error_message": "Cannot get connection from pool: timeout waiting for available connection",
+  "evidence": [
+    "Connection pool size: 20",
+    "Active connections: 20 (all in use)",
+    "RDS max_connections: 100 (only 20 used)",
+    "Connection wait time: >10 seconds",
+    "Application not closing connections properly"
+  ],
+  "resolution": "Fixed connection leaks in application code and increased pool size",
+  "fix_commands": [
+    "Update application: ensure connections closed in finally blocks",
+    "Increase connection pool size to 50",
+    "Enable connection pool monitoring"
+  ],
+  "time_to_resolution": "45 minutes",
+  "preventive_measures": [
+    "Use connection pooling libraries with automatic cleanup",
+    "Implement connection leak detection",
+    "Monitor connection pool metrics",
+    "Set connection timeout and max lifetime",
+    "Add unit tests for connection handling"
+  ],
+  "similar_incidents": ["inc-2024-10-15-011"],
+  "tags": ["rds", "connection-pool", "dependency-failure", "database"]
+}

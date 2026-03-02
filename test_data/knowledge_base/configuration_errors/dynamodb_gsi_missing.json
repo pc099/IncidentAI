@@ -1,0 +1,27 @@
+{
+  "incident_id": "inc-2024-12-01-003",
+  "timestamp": "2024-12-01T09:45:00Z",
+  "service_name": "user-query-service",
+  "failure_category": "configuration_error",
+  "root_cause": "Query using non-indexed attribute causing table scan and high latency",
+  "confidence_score": 85,
+  "error_message": "Query operation taking >5 seconds, causing timeouts",
+  "evidence": [
+    "Query filtering on 'email' attribute without GSI",
+    "Table scan consuming 500+ RCU per query",
+    "Query latency: 5-8 seconds",
+    "Table size: 2 million items"
+  ],
+  "resolution": "Created Global Secondary Index on email attribute",
+  "fix_commands": [
+    "aws dynamodb update-table --table-name users --attribute-definitions AttributeName=email,AttributeType=S --global-secondary-index-updates '[{\"Create\":{\"IndexName\":\"email-index\",\"KeySchema\":[{\"AttributeName\":\"email\",\"KeyType\":\"HASH\"}],\"Projection\":{\"ProjectionType\":\"ALL\"},\"ProvisionedThroughput\":{\"ReadCapacityUnits\":5,\"WriteCapacityUnits\":5}}}]'"
+  ],
+  "time_to_resolution": "20 minutes (plus GSI creation time)",
+  "preventive_measures": [
+    "Design GSIs based on query access patterns",
+    "Monitor query latency and consumed capacity",
+    "Avoid table scans in production"
+  ],
+  "similar_incidents": [],
+  "tags": ["dynamodb", "gsi", "configuration", "performance"]
+}
