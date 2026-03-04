@@ -27,7 +27,15 @@ from .memory_manager import MemoryManager
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
-cloudwatch = boto3.client('cloudwatch')
+# Lazy initialization to avoid import-time credential requirements
+cloudwatch = None
+
+def get_cloudwatch_client():
+    """Get CloudWatch client with lazy initialization"""
+    global cloudwatch
+    if cloudwatch is None:
+        cloudwatch = boto3.client('cloudwatch')
+    return cloudwatch
 
 
 @dataclass

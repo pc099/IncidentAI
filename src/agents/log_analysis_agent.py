@@ -1,16 +1,15 @@
 """
 Log Analysis Agent
 
-This agent retrieves and analyzes logs to identify error patterns.
-It integrates with Amazon Bedrock Claude for intelligent log analysis.
+Basic log analysis agent for incident response system.
 """
 
-import boto3
 import json
 import logging
-from typing import Dict
-from .log_retrieval import retrieve_logs_from_s3, calculate_time_window
-from .log_parser import parse_logs
+import boto3
+from typing import Dict, Any
+from agents.log_retrieval import retrieve_logs_from_s3, calculate_time_window
+from agents.log_parser import parse_logs
 
 logger = logging.getLogger(__name__)
 
@@ -24,8 +23,6 @@ class LogAnalysisAgent:
     - Parse logs to extract error patterns and stack traces
     - Use Bedrock Claude to generate structured log analysis
     - Return log summary with error patterns, stack traces, and excerpts
-    
-    Validates: Requirements 2.1-2.7, 10.4
     """
     
     def __init__(self, bedrock_model_id: str = "anthropic.claude-3-sonnet-20240229-v1:0"):
@@ -35,28 +32,104 @@ class LogAnalysisAgent:
         Args:
             bedrock_model_id: Bedrock model ID to use for analysis
         """
-        self.bedrock_runtime = boto3.client('bedrock-runtime')
+        # Lazy initialization to avoid import-time credential requirements
+        self.bedrock_runtime = None
         self.model_id = bedrock_model_id
+    
+    def get_bedrock_client(self):
+        """Get Bedrock client with lazy initialization"""
+        if self.bedrock_runtime is None:
+            self.bedrock_runtime = boto3.client('bedrock-runtime')
+        return self.bedrock_runtime
+    
+    def analyze(
+        self,
+        service_name: str,
+        timestamp: str,
+        log_location: str
+    ) -> Dict[str, Any]:
+        """
+        Analyze logs for the given incident
+        
+        Args:
+            service_name: Name of the failed service
+            timestamp: Failure timestamp
+            log_location: S3 location of logs
+            
+        Returns:
+            Log analysis results
+        """
+        try:
+            # Calculate time window
+            start_time, end_time = calculate_time_window(timestamp)
+            
+            # Extract bucket and prefix from S3 location
+            if log_location.startswith("s3://"):
+                s3_parts = log_location.replace("s3://", "").split("/", 1)
+                bucket_name = s3_parts[0]
+                key_prefix = s3_parts[1] if len(s3_parts) > 1 else ""
+            else:
+                raise ValueError(f"Invalid S3 location: {log_location}")
+            
+            # Retrieve logs
+            log_content = retrieve_logs_from_s3(
+                bucket_name=bucket_name,
+                key_prefix=key_prefix,
+                start_time=start_time,
+                end_time=end_time
+            )
+            
+            # Parse logs
+            parsed_data = parse_logs(log_content)
+            
+            # Generate analysis using Bedrock
+            analysis_prompt = self._create_analysis_prompt(
+                service_name, timestamp, log_content, parsed_data
+            )
+            
+            bedrock_response = self._invoke_bedrock(analysis_prompt)
+            
+            # Combine parsed data with Bedrock analysis
+            result = {
+                "agent": "log_analysis",
+                "service_name": service_name,
+                "timestamp": timestamp,
+                "log_location": log_location,
+                "error_patterns": parsed_data.get("error_patterns", []),
+                "stack_traces": parsed_data.get("stack_traces", []),
+                "log_levels": parsed_data.get("log_levels", []),
+                "bedrock_analysis": bedrock_response,
+                "confidence_score": self._calculate_confidence_score(parsed_data, bedrock_response),
+                "log_summary": {
+                    "total_lines": parsed_data.get("parsing_metadata", {}).get("total_lines", 0),
+                    "error_count": len(parsed_data.get("error_patterns", [])),
+                    "stack_trace_count": len(parsed_data.get("stack_traces", []))
+                }
+            }
+            
+            logger.info(f"Log analysis completed for {service_name}")
+            return result
+            
+        except Exception as e:
+            logger.error(f"Log analysis failed: {str(e)}")
+            return {
+                "agent": "log_analysis",
+                "service_name": service_name,
+                "timestamp": timestamp,
+                "error": str(e),
+                "confidence_score": 0,
+                "error_patterns": [],
+                "stack_traces": []
+            }
     
     def _create_analysis_prompt(
         self,
         service_name: str,
         timestamp: str,
         log_content: str,
-        parsed_data: Dict
+        parsed_data: Dict[str, Any]
     ) -> str:
-        """
-        Create the Bedrock prompt for log analysis.
-        
-        Args:
-            service_name: Name of the failed service
-            timestamp: Failure timestamp
-            log_content: Raw log content (truncated if needed)
-            parsed_data: Pre-parsed error patterns and stack traces
-            
-        Returns:
-            Formatted prompt string
-        """
+        """Create the Bedrock prompt for log analysis"""
         # Truncate log content for prompt if too long
         max_log_chars = 8000
         truncated_logs = log_content[:max_log_chars]
@@ -78,209 +151,78 @@ Log Content:
 {truncated_logs}
 
 Provide a structured analysis with:
-1. Primary error patterns with occurrence counts
-2. Stack traces if present (exception type, location, message)
-3. Most relevant log excerpts (max 5)
-4. Any anomalies or unusual patterns
+1. Key error patterns and their significance
+2. Root cause indicators from stack traces
+3. Timeline of events leading to failure
+4. Severity assessment
+5. Recommended next steps
 
-Format your response as valid JSON with this structure:
+Format your response as JSON with the following structure:
 {{
-  "error_patterns": [
-    {{
-      "pattern": "string",
-      "occurrences": number,
-      "first_seen": "ISO8601 timestamp",
-      "last_seen": "ISO8601 timestamp"
-    }}
-  ],
-  "stack_traces": [
-    {{
-      "exception": "string",
-      "location": "string",
-      "message": "string"
-    }}
-  ],
-  "relevant_excerpts": ["string"],
-  "anomalies": ["string"],
-  "summary": "Brief summary of the log analysis"
-}}
-
-Respond ONLY with valid JSON, no additional text."""
+    "key_findings": ["finding1", "finding2", ...],
+    "root_cause_indicators": ["indicator1", "indicator2", ...],
+    "timeline": ["event1", "event2", ...],
+    "severity": "low|medium|high|critical",
+    "recommendations": ["rec1", "rec2", ...],
+    "confidence_score": 0-100
+}}"""
         
         return prompt
     
-    def _invoke_bedrock(self, prompt: str) -> Dict:
-        """
-        Invoke Bedrock Claude model for log analysis.
-        
-        Args:
-            prompt: Analysis prompt
-            
-        Returns:
-            Parsed JSON response from Claude
-            
-        Raises:
-            Exception if Bedrock invocation fails
-        """
+    def _invoke_bedrock(self, prompt: str) -> Dict[str, Any]:
+        """Invoke Bedrock model for analysis"""
         try:
-            # Prepare request body for Claude
-            request_body = {
+            body = {
                 "anthropic_version": "bedrock-2023-05-31",
-                "max_tokens": 4096,
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": prompt
-                    }
-                ],
-                "temperature": 0.1  # Low temperature for consistent analysis
+                "max_tokens": 2000,
+                "temperature": 0.1,
+                "messages": [{"role": "user", "content": prompt}]
             }
             
-            # Invoke Bedrock
-            response = self.bedrock_runtime.invoke_model(
+            bedrock_runtime = self.get_bedrock_client()
+            response = bedrock_runtime.invoke_model(
                 modelId=self.model_id,
-                contentType="application/json",
-                accept="application/json",
-                body=json.dumps(request_body)
+                body=json.dumps(body)
             )
             
-            # Parse response
             response_body = json.loads(response['body'].read())
+            content = response_body['content'][0]['text']
             
-            # Extract content from Claude response
-            content = response_body.get('content', [])
-            if content and len(content) > 0:
-                text_content = content[0].get('text', '{}')
-            else:
-                text_content = '{}'
-            
-            # Parse JSON from response
+            # Try to parse as JSON
             try:
-                analysis_result = json.loads(text_content)
+                return json.loads(content)
             except json.JSONDecodeError:
-                # If Claude didn't return valid JSON, extract what we can
-                logger.warning("Claude response was not valid JSON, using fallback")
-                analysis_result = {
-                    "error_patterns": [],
-                    "stack_traces": [],
-                    "relevant_excerpts": [],
-                    "anomalies": [],
-                    "summary": text_content[:500]
-                }
-            
-            return analysis_result
-            
-        except Exception as e:
-            logger.error(f"Error invoking Bedrock: {str(e)}")
-            raise
-    
-    def analyze(
-        self,
-        log_location: str,
-        timestamp: str,
-        service_name: str
-    ) -> Dict:
-        """
-        Analyze logs for the given incident.
-        
-        Args:
-            log_location: S3 URI of the log file
-            timestamp: ISO 8601 formatted failure timestamp
-            service_name: Name of the failed service
-            
-        Returns:
-            Dictionary containing log analysis results:
-            - agent: "log-analysis"
-            - summary: Structured log analysis
-            - status: "success" or "failed"
-            
-        Validates: Requirements 2.1-2.7, 10.4
-        """
-        try:
-            logger.info(f"Starting log analysis for {service_name} at {timestamp}")
-            
-            # Step 1: Retrieve logs from S3 (Requirements 2.1, 2.2, 2.3, 2.7)
-            log_data = retrieve_logs_from_s3(log_location, timestamp, service_name)
-            
-            # Check if logs were found
-            if log_data.get('confidence_score') == 0:
-                logger.warning(f"Logs not found for {service_name}")
                 return {
-                    "agent": "log-analysis",
-                    "status": "failed",
-                    "summary": {
-                        "error_patterns": [],
-                        "stack_traces": [],
-                        "relevant_excerpts": [],
-                        "log_volume": "0 MB",
-                        "time_range": log_data.get('time_range', 'unknown'),
-                        "error": log_data.get('error', 'Logs not available')
-                    },
-                    "confidence_score": 0
-                }
-            
-            log_content = log_data['log_content']
-            
-            # Step 2: Parse logs (Requirements 2.4, 2.5, 10.4)
-            parsed_data = parse_logs(log_content)
-            
-            # Step 3: Use Bedrock for enhanced analysis (Requirement 2.6)
-            try:
-                prompt = self._create_analysis_prompt(
-                    service_name,
-                    timestamp,
-                    log_content,
-                    parsed_data
-                )
-                
-                bedrock_analysis = self._invoke_bedrock(prompt)
-                
-                # Merge parsed data with Bedrock analysis
-                # Prefer Bedrock results but fall back to parsed data
-                final_analysis = {
-                    "error_patterns": bedrock_analysis.get('error_patterns') or parsed_data['error_patterns'],
-                    "stack_traces": bedrock_analysis.get('stack_traces') or parsed_data['stack_traces'],
-                    "relevant_excerpts": bedrock_analysis.get('relevant_excerpts') or parsed_data['relevant_excerpts'],
-                    "anomalies": bedrock_analysis.get('anomalies', []),
-                    "summary": bedrock_analysis.get('summary', 'Log analysis completed'),
-                    "log_volume": log_data['log_volume'],
-                    "time_range": log_data['time_range'],
-                    "truncated": log_data.get('truncated', False)
+                    "analysis_text": content,
+                    "confidence_score": 60
                 }
                 
-            except Exception as bedrock_error:
-                logger.warning(f"Bedrock analysis failed, using parsed data: {str(bedrock_error)}")
-                # Fall back to parsed data if Bedrock fails
-                final_analysis = {
-                    "error_patterns": parsed_data['error_patterns'],
-                    "stack_traces": parsed_data['stack_traces'],
-                    "relevant_excerpts": parsed_data['relevant_excerpts'],
-                    "anomalies": [],
-                    "summary": "Log analysis completed (Bedrock unavailable)",
-                    "log_volume": log_data['log_volume'],
-                    "time_range": log_data['time_range'],
-                    "truncated": log_data.get('truncated', False)
-                }
-            
-            logger.info(f"Log analysis completed for {service_name}")
-            
-            return {
-                "agent": "log-analysis",
-                "status": "success",
-                "summary": final_analysis
-            }
-            
         except Exception as e:
-            logger.error(f"Log analysis failed: {str(e)}")
+            logger.error(f"Bedrock invocation failed: {str(e)}")
             return {
-                "agent": "log-analysis",
-                "status": "failed",
                 "error": str(e),
-                "summary": {
-                    "error_patterns": [],
-                    "stack_traces": [],
-                    "relevant_excerpts": [],
-                    "log_volume": "0 MB",
-                    "time_range": "unknown"
-                }
+                "confidence_score": 0
             }
+    
+    def _calculate_confidence_score(
+        self, 
+        parsed_data: Dict[str, Any], 
+        bedrock_response: Dict[str, Any]
+    ) -> int:
+        """Calculate confidence score for the analysis"""
+        score = 0
+        
+        # Base score from parsed data
+        if parsed_data.get("error_patterns"):
+            score += 30
+        if parsed_data.get("stack_traces"):
+            score += 20
+        if not parsed_data.get("parsing_error"):
+            score += 10
+        
+        # Score from Bedrock analysis
+        bedrock_confidence = bedrock_response.get("confidence_score", 0)
+        if bedrock_confidence > 0:
+            score += min(40, bedrock_confidence * 0.4)
+        
+        return min(100, score)

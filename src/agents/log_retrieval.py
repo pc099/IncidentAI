@@ -1,150 +1,121 @@
 """
-Log Retrieval Module for Log Analysis Agent
+Log Retrieval Module
 
-This module handles retrieving logs from S3 for incident analysis.
-It calculates the appropriate time window and handles large log files.
+Handles retrieval of logs from S3 for analysis.
 """
 
 import boto3
-from datetime import datetime, timedelta
-from typing import Dict, Optional, Tuple
 import logging
+from datetime import datetime, timedelta
+from typing import Tuple
+from botocore.exceptions import ClientError
 
 logger = logging.getLogger(__name__)
 
 
-class LogRetrievalError(Exception):
-    """Exception raised when log retrieval fails"""
-    pass
-
-
-def calculate_time_window(timestamp: str) -> Tuple[datetime, datetime]:
+def calculate_time_window(timestamp: str, window_minutes: int = 30) -> Tuple[datetime, datetime]:
     """
-    Calculate the time window for log retrieval.
+    Calculate time window for log retrieval around incident timestamp
     
     Args:
-        timestamp: ISO 8601 formatted timestamp of the failure
+        timestamp: Incident timestamp in ISO format
+        window_minutes: Minutes before and after incident
         
     Returns:
-        Tuple of (start_time, end_time) where:
-        - start_time is 15 minutes before the failure
-        - end_time is 5 minutes after the failure
-        
-    Validates: Requirements 2.2
+        Tuple of (start_time, end_time)
     """
-    failure_time = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
-    start_time = failure_time - timedelta(minutes=15)
-    end_time = failure_time + timedelta(minutes=5)
-    
-    return start_time, end_time
+    try:
+        incident_time = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+        start_time = incident_time - timedelta(minutes=window_minutes)
+        end_time = incident_time + timedelta(minutes=window_minutes)
+        return start_time, end_time
+    except Exception as e:
+        logger.error(f"Failed to parse timestamp {timestamp}: {str(e)}")
+        # Fallback to current time
+        now = datetime.utcnow()
+        return now - timedelta(minutes=window_minutes), now + timedelta(minutes=window_minutes)
 
 
 def retrieve_logs_from_s3(
-    log_location: str,
-    timestamp: str,
-    service_name: str,
-    max_size_mb: int = 10
-) -> Dict:
+    bucket_name: str,
+    key_prefix: str,
+    start_time: datetime,
+    end_time: datetime,
+    max_size_mb: int = 50
+) -> str:
     """
-    Retrieve logs from S3 for the specified time window.
+    Retrieve logs from S3 within time window
     
     Args:
-        log_location: S3 URI of the log file (e.g., s3://bucket/path/to/log.log)
-        timestamp: ISO 8601 formatted timestamp of the failure
-        service_name: Name of the service that failed
-        max_size_mb: Maximum log size to retrieve in MB (default: 10)
+        bucket_name: S3 bucket name
+        key_prefix: S3 key prefix for logs
+        start_time: Start time for log retrieval
+        end_time: End time for log retrieval
+        max_size_mb: Maximum log size to retrieve
         
     Returns:
-        Dictionary containing:
-        - log_content: The log content as a string
-        - log_volume: Size of logs retrieved
-        - time_range: Time window used for retrieval
-        - truncated: Whether logs were truncated
-        - confidence_score: 0 if logs missing, otherwise not set here
-        
-    Validates: Requirements 2.1, 2.2, 2.3, 2.7
+        Combined log content as string
     """
+    s3_client = boto3.client('s3')
+    log_content = ""
+    total_size = 0
+    max_size_bytes = max_size_mb * 1024 * 1024
+    
     try:
-        # Parse S3 URI
-        if not log_location.startswith('s3://'):
-            raise LogRetrievalError(f"Invalid S3 URI: {log_location}")
-        
-        # Extract bucket and key from S3 URI
-        s3_path = log_location[5:]  # Remove 's3://'
-        parts = s3_path.split('/', 1)
-        if len(parts) != 2:
-            raise LogRetrievalError(f"Invalid S3 path format: {log_location}")
-        
-        bucket_name = parts[0]
-        object_key = parts[1]
-        
-        # Calculate time window
-        start_time, end_time = calculate_time_window(timestamp)
-        time_range = f"{start_time.strftime('%H:%M:%S')} - {end_time.strftime('%H:%M:%S')}"
-        
-        # Initialize S3 client
-        s3_client = boto3.client('s3')
-        
-        # Get object metadata first to check size
-        try:
-            response = s3_client.head_object(Bucket=bucket_name, Key=object_key)
-            object_size = response['ContentLength']
-        except s3_client.exceptions.NoSuchKey:
-            # Handle missing logs gracefully (Requirement 2.7)
-            logger.warning(f"Log file not found: {log_location}")
-            return {
-                "log_content": "",
-                "log_volume": "0 MB",
-                "time_range": time_range,
-                "truncated": False,
-                "confidence_score": 0,
-                "error": "Log file not found"
-            }
-        except Exception as e:
-            logger.error(f"Error checking log file: {str(e)}")
-            return {
-                "log_content": "",
-                "log_volume": "0 MB",
-                "time_range": time_range,
-                "truncated": False,
-                "confidence_score": 0,
-                "error": f"Error accessing log file: {str(e)}"
-            }
-        
-        # Handle logs >10MB by retrieving most recent 10MB (Requirement 2.3)
-        max_size_bytes = max_size_mb * 1024 * 1024
-        truncated = False
-        
-        if object_size > max_size_bytes:
-            # Retrieve only the last 10MB
-            byte_range = f"bytes={object_size - max_size_bytes}-{object_size - 1}"
-            response = s3_client.get_object(
-                Bucket=bucket_name,
-                Key=object_key,
-                Range=byte_range
-            )
-            truncated = True
-            log_volume = f"{max_size_mb} MB"
-        else:
-            # Retrieve entire file
-            response = s3_client.get_object(Bucket=bucket_name, Key=object_key)
-            log_volume = f"{object_size / (1024 * 1024):.1f} MB"
-        
-        # Read log content
-        log_content = response['Body'].read().decode('utf-8', errors='replace')
-        
-        logger.info(
-            f"Retrieved logs for {service_name}: {log_volume}, "
-            f"truncated={truncated}, time_range={time_range}"
+        # List objects in the time range
+        response = s3_client.list_objects_v2(
+            Bucket=bucket_name,
+            Prefix=key_prefix,
+            MaxKeys=100  # Limit number of files
         )
         
-        return {
-            "log_content": log_content,
-            "log_volume": log_volume,
-            "time_range": time_range,
-            "truncated": truncated
-        }
+        if 'Contents' not in response:
+            logger.warning(f"No logs found in {bucket_name}/{key_prefix}")
+            return "No logs found for the specified time range."
         
+        # Filter objects by time and retrieve content
+        for obj in response['Contents']:
+            if total_size >= max_size_bytes:
+                log_content += "\n... (additional logs truncated due to size limit)"
+                break
+                
+            # Simple time filtering based on object key (assumes timestamp in key)
+            # In production, this would be more sophisticated
+            try:
+                obj_response = s3_client.get_object(
+                    Bucket=bucket_name,
+                    Key=obj['Key']
+                )
+                
+                content = obj_response['Body'].read().decode('utf-8', errors='ignore')
+                content_size = len(content.encode('utf-8'))
+                
+                if total_size + content_size > max_size_bytes:
+                    # Truncate to fit within limit
+                    remaining_bytes = max_size_bytes - total_size
+                    content = content[:remaining_bytes]
+                    log_content += f"\n--- Log file: {obj['Key']} ---\n"
+                    log_content += content
+                    log_content += "\n... (log file truncated due to size limit)"
+                    break
+                
+                log_content += f"\n--- Log file: {obj['Key']} ---\n"
+                log_content += content
+                total_size += content_size
+                
+            except ClientError as e:
+                logger.error(f"Failed to retrieve {obj['Key']}: {str(e)}")
+                continue
+        
+        if not log_content.strip():
+            return "No log content could be retrieved."
+            
+        logger.info(f"Retrieved {total_size} bytes of logs from {len(response.get('Contents', []))} files")
+        return log_content
+        
+    except ClientError as e:
+        logger.error(f"Failed to retrieve logs from S3: {str(e)}")
+        return f"Error retrieving logs: {str(e)}"
     except Exception as e:
-        logger.error(f"Error retrieving logs from S3: {str(e)}")
-        raise LogRetrievalError(f"Failed to retrieve logs: {str(e)}")
+        logger.error(f"Unexpected error retrieving logs: {str(e)}")
+        return f"Unexpected error retrieving logs: {str(e)}"

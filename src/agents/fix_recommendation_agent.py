@@ -829,8 +829,15 @@ class BedrockFixRecommendationGenerator:
         Args:
             bedrock_model_id: Bedrock model ID to use for fix generation
         """
-        self.bedrock_runtime = boto3.client('bedrock-runtime')
+        # Lazy initialization to avoid import-time credential requirements
+        self.bedrock_runtime = None
         self.model_id = bedrock_model_id
+    
+    def get_bedrock_client(self):
+        """Get Bedrock client with lazy initialization"""
+        if self.bedrock_runtime is None:
+            self.bedrock_runtime = boto3.client('bedrock-runtime')
+        return self.bedrock_runtime
     
     def create_prompt(
         self,
@@ -975,7 +982,8 @@ If similar fixes exist, incorporate their successful approaches into your recomm
             }
             
             # Invoke Bedrock
-            response = self.bedrock_runtime.invoke_model(
+            bedrock_runtime = self.get_bedrock_client()
+            response = bedrock_runtime.invoke_model(
                 modelId=self.model_id,
                 body=json.dumps(request_body),
                 contentType="application/json",
