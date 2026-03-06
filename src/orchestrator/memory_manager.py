@@ -1,559 +1,451 @@
 """
-Memory Management Module for Agent Context
+Memory Manager for Enhanced Orchestrator
 
-This module manages memory and context for agent execution, including storing
-intermediate results for agent handoffs and maintaining conversation context
-across agent invocations.
-
-Requirements:
-- 6.2: Store intermediate results for agent handoffs
-- 6.2: Maintain conversation context across agent invocations
+Manages agent memory and context across incident processing sessions.
+Provides episodic memory capabilities for agent learning and context retention.
 """
 
 import json
+import logging
 from typing import Dict, Any, Optional, List
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from enum import Enum
+import boto3
+
+logger = logging.getLogger(__name__)
 
 
-class ContextType(Enum):
-    """Types of context stored in memory"""
-    AGENT_INPUT = "agent_input"
-    AGENT_OUTPUT = "agent_output"
-    INTERMEDIATE_RESULT = "intermediate_result"
-    CONVERSATION = "conversation"
-    METADATA = "metadata"
+class MemoryType(Enum):
+    """Types of memory storage"""
+    EPISODIC = "episodic"      # Session-specific memories
+    SEMANTIC = "semantic"      # General knowledge and patterns
+    PROCEDURAL = "procedural"  # Learned procedures and workflows
 
 
 @dataclass
-class ContextEntry:
-    """
-    Represents a single context entry in memory.
-    
-    Each entry captures a piece of information from the agent execution flow.
-    """
-    entry_id: str
-    context_type: ContextType
+class MemoryEntry:
+    """Individual memory entry"""
+    memory_id: str
+    session_id: str
     agent_name: str
-    timestamp: datetime
-    data: Dict[str, Any]
-    size_bytes: int = 0
-    
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert context entry to dictionary format"""
-        return {
-            "entry_id": self.entry_id,
-            "context_type": self.context_type.value,
-            "agent_name": self.agent_name,
-            "timestamp": self.timestamp.isoformat(),
-            "data": self.data,
-            "size_bytes": self.size_bytes
-        }
+    memory_type: MemoryType
+    content: Dict[str, Any]
+    created_at: datetime
+    importance_score: float = 0.5
+    access_count: int = 0
+    last_accessed: Optional[datetime] = None
+    tags: List[str] = field(default_factory=list)
 
 
 class MemoryManager:
     """
-    Manages memory and context for agent execution.
+    Memory management system for agent orchestration
     
-    Provides:
-    - Storage of intermediate results for agent handoffs
-    - Conversation context maintenance across agent invocations
-    - Context compression when size limits are exceeded
-    - Context retrieval for agent execution
-    
-    Requirements:
-    - 6.2: WHEN an agent completes, store output for next agent
-    - 6.2: WHEN an agent is invoked, provide context from previous agents
+    Provides episodic memory that allows agents to learn from past interactions
+    and maintain context across incident processing sessions.
     """
     
     def __init__(self, config: Optional[Dict[str, Any]] = None):
         """
-        Initialize memory manager.
+        Initialize memory manager
         
         Args:
-            config: Optional configuration dictionary with:
-                - max_context_size_kb: Max context size in KB (default: 100)
-                - enable_context_compression: Enable compression (default: True)
-                - persist_intermediate_results: Persist results (default: True)
+            config: Memory configuration options
         """
         self.config = config or {}
-        self.max_context_size_kb = self.config.get("max_context_size_kb", 100)
-        self.enable_compression = self.config.get("enable_context_compression", True)
-        self.persist_results = self.config.get("persist_intermediate_results", True)
         
-        # Memory storage per session
-        self._session_memory: Dict[str, List[ContextEntry]] = {}
+        # Memory storage (in production, this would be DynamoDB)
+        self.session_memories: Dict[str, List[MemoryEntry]] = {}
+        self.global_memories: Dict[str, MemoryEntry] = {}
         
-        # Context index for fast retrieval
-        self._context_index: Dict[str, Dict[str, List[str]]] = {}
+        # Configuration
+        self.max_session_memories = self.config.get("max_session_memories", 100)
+        self.memory_retention_days = self.config.get("memory_retention_days", 30)
+        self.importance_threshold = self.config.get("importance_threshold", 0.7)
         
-        # Memory metrics
-        self._total_entries_stored = 0
-        self._total_bytes_stored = 0
-        self._compression_count = 0
-    
-    def store_agent_input(
-        self,
-        session_id: str,
-        agent_name: str,
-        input_data: Dict[str, Any]
-    ) -> str:
-        """
-        Store agent input data.
-        
-        Args:
-            session_id: Session identifier
-            agent_name: Name of the agent
-            input_data: Input data for the agent
-        
-        Returns:
-            Entry ID of stored context
-        
-        Requirements:
-            - 6.2: Store intermediate results for agent handoffs
-        """
-        return self._store_context(
-            session_id=session_id,
-            agent_name=agent_name,
-            context_type=ContextType.AGENT_INPUT,
-            data=input_data
-        )
-    
-    def store_agent_output(
-        self,
-        session_id: str,
-        agent_name: str,
-        output_data: Dict[str, Any]
-    ) -> str:
-        """
-        Store agent output data for handoff to next agent.
-        
-        Args:
-            session_id: Session identifier
-            agent_name: Name of the agent
-            output_data: Output data from the agent
-        
-        Returns:
-            Entry ID of stored context
-        
-        Requirements:
-            - 6.2: Store intermediate results for agent handoffs
-        """
-        return self._store_context(
-            session_id=session_id,
-            agent_name=agent_name,
-            context_type=ContextType.AGENT_OUTPUT,
-            data=output_data
-        )
-    
-    def store_intermediate_result(
-        self,
-        session_id: str,
-        agent_name: str,
-        result_data: Dict[str, Any]
-    ) -> str:
-        """
-        Store intermediate processing result.
-        
-        Args:
-            session_id: Session identifier
-            agent_name: Name of the agent
-            result_data: Intermediate result data
-        
-        Returns:
-            Entry ID of stored context
-        
-        Requirements:
-            - 6.2: Store intermediate results for agent handoffs
-        """
-        if not self.persist_results:
-            return ""
-        
-        return self._store_context(
-            session_id=session_id,
-            agent_name=agent_name,
-            context_type=ContextType.INTERMEDIATE_RESULT,
-            data=result_data
-        )
-    
-    def store_conversation_context(
-        self,
-        session_id: str,
-        agent_name: str,
-        conversation_data: Dict[str, Any]
-    ) -> str:
-        """
-        Store conversation context for multi-turn interactions.
-        
-        Args:
-            session_id: Session identifier
-            agent_name: Name of the agent
-            conversation_data: Conversation context data
-        
-        Returns:
-            Entry ID of stored context
-        
-        Requirements:
-            - 6.2: Maintain conversation context across agent invocations
-        """
-        return self._store_context(
-            session_id=session_id,
-            agent_name=agent_name,
-            context_type=ContextType.CONVERSATION,
-            data=conversation_data
-        )
-    
-    def get_agent_output(
-        self,
-        session_id: str,
-        agent_name: str
-    ) -> Optional[Dict[str, Any]]:
-        """
-        Retrieve agent output data.
-        
-        Args:
-            session_id: Session identifier
-            agent_name: Name of the agent
-        
-        Returns:
-            Agent output data if found, None otherwise
-        
-        Requirements:
-            - 6.2: Provide context from previous agents
-        """
-        entries = self._get_context_by_type(
-            session_id=session_id,
-            agent_name=agent_name,
-            context_type=ContextType.AGENT_OUTPUT
-        )
-        
-        if not entries:
-            return None
-        
-        # Return most recent output
-        return entries[-1].data
-    
-    def get_previous_agent_outputs(
-        self,
-        session_id: str,
-        current_agent: str,
-        agent_sequence: List[str]
-    ) -> Dict[str, Any]:
-        """
-        Get outputs from all previous agents in the sequence.
-        
-        Args:
-            session_id: Session identifier
-            current_agent: Name of current agent
-            agent_sequence: Ordered list of agent names
-        
-        Returns:
-            Dictionary mapping agent names to their outputs
-        
-        Requirements:
-            - 6.2: Provide context from previous agents for handoffs
-        """
-        previous_outputs = {}
-        
-        try:
-            current_index = agent_sequence.index(current_agent)
-        except ValueError:
-            return previous_outputs
-        
-        # Get outputs from all previous agents
-        for i in range(current_index):
-            agent_name = agent_sequence[i]
-            output = self.get_agent_output(session_id, agent_name)
-            if output:
-                previous_outputs[agent_name] = output
-        
-        return previous_outputs
-    
-    def get_conversation_context(
-        self,
-        session_id: str,
-        agent_name: Optional[str] = None
-    ) -> List[Dict[str, Any]]:
-        """
-        Retrieve conversation context.
-        
-        Args:
-            session_id: Session identifier
-            agent_name: Optional agent name to filter by
-        
-        Returns:
-            List of conversation context entries
-        
-        Requirements:
-            - 6.2: Maintain conversation context across agent invocations
-        """
-        if agent_name:
-            entries = self._get_context_by_type(
-                session_id=session_id,
-                agent_name=agent_name,
-                context_type=ContextType.CONVERSATION
-            )
-        else:
-            entries = self._get_all_context_by_type(
-                session_id=session_id,
-                context_type=ContextType.CONVERSATION
-            )
-        
-        return [entry.data for entry in entries]
-    
-    def get_full_context(
-        self,
-        session_id: str,
-        agent_name: Optional[str] = None
-    ) -> Dict[str, Any]:
-        """
-        Get complete context for a session or agent.
-        
-        Args:
-            session_id: Session identifier
-            agent_name: Optional agent name to filter by
-        
-        Returns:
-            Dictionary containing all context data organized by type
-        """
-        if session_id not in self._session_memory:
-            return {}
-        
-        entries = self._session_memory[session_id]
-        
-        if agent_name:
-            entries = [e for e in entries if e.agent_name == agent_name]
-        
-        # Organize by context type
-        context = {
-            "agent_inputs": [],
-            "agent_outputs": [],
-            "intermediate_results": [],
-            "conversations": [],
-            "metadata": []
+        # Memory statistics
+        self.stats = {
+            "total_memories": 0,
+            "session_memories": 0,
+            "global_memories": 0,
+            "memory_retrievals": 0,
+            "memory_consolidations": 0
         }
         
-        for entry in entries:
-            if entry.context_type == ContextType.AGENT_INPUT:
-                context["agent_inputs"].append(entry.to_dict())
-            elif entry.context_type == ContextType.AGENT_OUTPUT:
-                context["agent_outputs"].append(entry.to_dict())
-            elif entry.context_type == ContextType.INTERMEDIATE_RESULT:
-                context["intermediate_results"].append(entry.to_dict())
-            elif entry.context_type == ContextType.CONVERSATION:
-                context["conversations"].append(entry.to_dict())
-            elif entry.context_type == ContextType.METADATA:
-                context["metadata"].append(entry.to_dict())
+        logger.info("Memory manager initialized")
+    
+    def store_memory(
+        self,
+        session_id: str,
+        agent_name: str,
+        memory_type: MemoryType,
+        content: Dict[str, Any],
+        importance_score: float = 0.5,
+        tags: Optional[List[str]] = None
+    ) -> str:
+        """
+        Store a memory entry
+        
+        Args:
+            session_id: Session identifier
+            agent_name: Agent that created the memory
+            memory_type: Type of memory
+            content: Memory content
+            importance_score: Importance score (0.0-1.0)
+            tags: Optional tags for categorization
+            
+        Returns:
+            Memory ID
+        """
+        memory_id = f"{session_id}_{agent_name}_{int(datetime.now().timestamp())}"
+        
+        memory_entry = MemoryEntry(
+            memory_id=memory_id,
+            session_id=session_id,
+            agent_name=agent_name,
+            memory_type=memory_type,
+            content=content,
+            created_at=datetime.now(),
+            importance_score=importance_score,
+            tags=tags or []
+        )
+        
+        # Store in session memories
+        if session_id not in self.session_memories:
+            self.session_memories[session_id] = []
+        
+        self.session_memories[session_id].append(memory_entry)
+        
+        # Update statistics
+        self.stats["total_memories"] += 1
+        self.stats["session_memories"] += 1
+        
+        # Cleanup old memories if needed
+        self._cleanup_session_memories(session_id)
+        
+        logger.debug(f"Stored memory: {memory_id} for agent {agent_name}")
+        return memory_id
+    
+    def retrieve_memories(
+        self,
+        session_id: str,
+        agent_name: Optional[str] = None,
+        memory_type: Optional[MemoryType] = None,
+        tags: Optional[List[str]] = None,
+        limit: int = 10
+    ) -> List[MemoryEntry]:
+        """
+        Retrieve memories based on criteria
+        
+        Args:
+            session_id: Session identifier
+            agent_name: Optional agent filter
+            memory_type: Optional memory type filter
+            tags: Optional tag filters
+            limit: Maximum number of memories to return
+            
+        Returns:
+            List of matching memory entries
+        """
+        self.stats["memory_retrievals"] += 1
+        
+        # Get session memories
+        session_memories = self.session_memories.get(session_id, [])
+        
+        # Apply filters
+        filtered_memories = []
+        for memory in session_memories:
+            # Agent filter
+            if agent_name and memory.agent_name != agent_name:
+                continue
+            
+            # Memory type filter
+            if memory_type and memory.memory_type != memory_type:
+                continue
+            
+            # Tag filter
+            if tags and not any(tag in memory.tags for tag in tags):
+                continue
+            
+            filtered_memories.append(memory)
+        
+        # Sort by importance and recency
+        filtered_memories.sort(
+            key=lambda m: (m.importance_score, m.created_at),
+            reverse=True
+        )
+        
+        # Update access statistics
+        for memory in filtered_memories[:limit]:
+            memory.access_count += 1
+            memory.last_accessed = datetime.now()
+        
+        logger.debug(f"Retrieved {len(filtered_memories[:limit])} memories for session {session_id}")
+        return filtered_memories[:limit]
+    
+    def store_agent_result(
+        self,
+        session_id: str,
+        agent_name: str,
+        result: Dict[str, Any],
+        execution_time: float,
+        success: bool
+    ):
+        """
+        Store agent execution result as memory
+        
+        Args:
+            session_id: Session identifier
+            agent_name: Agent name
+            result: Agent execution result
+            execution_time: Execution time in seconds
+            success: Whether execution was successful
+        """
+        # Calculate importance based on success and execution time
+        importance_score = 0.8 if success else 0.3
+        if execution_time > 60:  # Long-running operations are more important
+            importance_score += 0.1
+        
+        memory_content = {
+            "agent_result": result,
+            "execution_time": execution_time,
+            "success": success,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+        tags = [agent_name, "execution_result"]
+        if success:
+            tags.append("successful")
+        else:
+            tags.append("failed")
+        
+        self.store_memory(
+            session_id=session_id,
+            agent_name=agent_name,
+            memory_type=MemoryType.EPISODIC,
+            content=memory_content,
+            importance_score=min(1.0, importance_score),
+            tags=tags
+        )
+    
+    def get_session_context(self, session_id: str) -> Dict[str, Any]:
+        """
+        Get complete session context for agents
+        
+        Args:
+            session_id: Session identifier
+            
+        Returns:
+            Session context dictionary
+        """
+        session_memories = self.session_memories.get(session_id, [])
+        
+        # Organize memories by agent
+        agent_memories = {}
+        for memory in session_memories:
+            agent_name = memory.agent_name
+            if agent_name not in agent_memories:
+                agent_memories[agent_name] = []
+            agent_memories[agent_name].append(memory)
+        
+        # Create context summary
+        context = {
+            "session_id": session_id,
+            "total_memories": len(session_memories),
+            "agent_memories": {},
+            "important_memories": [],
+            "recent_memories": []
+        }
+        
+        # Add agent-specific memories
+        for agent_name, memories in agent_memories.items():
+            context["agent_memories"][agent_name] = [
+                {
+                    "memory_id": m.memory_id,
+                    "content": m.content,
+                    "importance_score": m.importance_score,
+                    "created_at": m.created_at.isoformat(),
+                    "tags": m.tags
+                }
+                for m in memories[-5:]  # Last 5 memories per agent
+            ]
+        
+        # Add important memories (high importance score)
+        important_memories = [
+            m for m in session_memories 
+            if m.importance_score >= self.importance_threshold
+        ]
+        important_memories.sort(key=lambda m: m.importance_score, reverse=True)
+        
+        context["important_memories"] = [
+            {
+                "memory_id": m.memory_id,
+                "agent_name": m.agent_name,
+                "content": m.content,
+                "importance_score": m.importance_score
+            }
+            for m in important_memories[:10]
+        ]
+        
+        # Add recent memories
+        recent_memories = sorted(session_memories, key=lambda m: m.created_at, reverse=True)
+        context["recent_memories"] = [
+            {
+                "memory_id": m.memory_id,
+                "agent_name": m.agent_name,
+                "content": m.content,
+                "created_at": m.created_at.isoformat()
+            }
+            for m in recent_memories[:10]
+        ]
         
         return context
     
-    def clear_session_memory(self, session_id: str) -> bool:
+    def consolidate_session_memories(self, session_id: str) -> Dict[str, Any]:
         """
-        Clear all memory for a session.
+        Consolidate session memories into global knowledge
         
         Args:
             session_id: Session identifier
-        
+            
         Returns:
-            True if cleared successfully
+            Consolidation summary
         """
-        if session_id not in self._session_memory:
-            return False
+        self.stats["memory_consolidations"] += 1
         
-        # Clear memory
-        del self._session_memory[session_id]
+        session_memories = self.session_memories.get(session_id, [])
+        if not session_memories:
+            return {"consolidated_memories": 0, "patterns_identified": 0}
         
-        # Clear index
-        if session_id in self._context_index:
-            del self._context_index[session_id]
-        
-        return True
-    
-    def get_memory_size(self, session_id: str) -> int:
-        """
-        Get total memory size for a session in bytes.
-        
-        Args:
-            session_id: Session identifier
-        
-        Returns:
-            Total size in bytes
-        """
-        if session_id not in self._session_memory:
-            return 0
-        
-        return sum(
-            entry.size_bytes
-            for entry in self._session_memory[session_id]
-        )
-    
-    def compress_context(self, session_id: str) -> bool:
-        """
-        Compress context when size exceeds limits.
-        
-        This removes intermediate results and keeps only essential data.
-        
-        Args:
-            session_id: Session identifier
-        
-        Returns:
-            True if compression performed
-        """
-        if not self.enable_compression:
-            return False
-        
-        if session_id not in self._session_memory:
-            return False
-        
-        current_size_kb = self.get_memory_size(session_id) / 1024
-        
-        if current_size_kb <= self.max_context_size_kb:
-            return False
-        
-        # Remove intermediate results (least important)
-        entries = self._session_memory[session_id]
-        compressed_entries = [
-            entry for entry in entries
-            if entry.context_type != ContextType.INTERMEDIATE_RESULT
+        # Identify important patterns
+        important_memories = [
+            m for m in session_memories 
+            if m.importance_score >= self.importance_threshold
         ]
         
-        self._session_memory[session_id] = compressed_entries
-        self._compression_count += 1
+        # Group by agent and extract patterns
+        agent_patterns = {}
+        for memory in important_memories:
+            agent_name = memory.agent_name
+            if agent_name not in agent_patterns:
+                agent_patterns[agent_name] = []
+            
+            # Extract key patterns from memory content
+            if "error_patterns" in memory.content:
+                agent_patterns[agent_name].extend(memory.content["error_patterns"])
+            
+            if "success_patterns" in memory.content:
+                agent_patterns[agent_name].extend(memory.content["success_patterns"])
         
-        # Rebuild index
-        self._rebuild_index(session_id)
+        # Store consolidated patterns as global memories
+        consolidated_count = 0
+        for agent_name, patterns in agent_patterns.items():
+            if patterns:
+                global_memory_id = f"global_{agent_name}_{int(datetime.now().timestamp())}"
+                
+                global_memory = MemoryEntry(
+                    memory_id=global_memory_id,
+                    session_id="global",
+                    agent_name=agent_name,
+                    memory_type=MemoryType.SEMANTIC,
+                    content={"patterns": patterns, "source_session": session_id},
+                    created_at=datetime.now(),
+                    importance_score=0.9,
+                    tags=["consolidated", "patterns", agent_name]
+                )
+                
+                self.global_memories[global_memory_id] = global_memory
+                consolidated_count += 1
         
-        return True
-    
-    def get_metrics(self) -> Dict[str, Any]:
-        """
-        Get memory manager metrics.
+        self.stats["global_memories"] += consolidated_count
         
-        Returns:
-            Dictionary containing memory metrics
-        """
-        total_sessions = len(self._session_memory)
-        total_size_kb = sum(
-            self.get_memory_size(sid) / 1024
-            for sid in self._session_memory.keys()
-        )
+        logger.info(f"Consolidated {consolidated_count} memories from session {session_id}")
         
         return {
-            "total_entries_stored": self._total_entries_stored,
-            "total_bytes_stored": self._total_bytes_stored,
-            "compression_count": self._compression_count,
-            "active_sessions": total_sessions,
-            "total_memory_kb": round(total_size_kb, 2),
-            "average_memory_per_session_kb": (
-                round(total_size_kb / total_sessions, 2)
-                if total_sessions > 0 else 0
-            )
+            "consolidated_memories": consolidated_count,
+            "patterns_identified": sum(len(patterns) for patterns in agent_patterns.values()),
+            "agent_patterns": agent_patterns
         }
     
-    def _store_context(
-        self,
-        session_id: str,
-        agent_name: str,
-        context_type: ContextType,
-        data: Dict[str, Any]
-    ) -> str:
-        """Internal method to store context entry"""
-        # Generate entry ID
-        entry_id = f"{session_id}-{agent_name}-{context_type.value}-{len(self._session_memory.get(session_id, []))}"
+    def clear_session_memory(self, session_id: str):
+        """
+        Clear all memories for a session
         
-        # Calculate size
-        data_json = json.dumps(data)
-        size_bytes = len(data_json.encode('utf-8'))
-        
-        # Create entry
-        entry = ContextEntry(
-            entry_id=entry_id,
-            context_type=context_type,
-            agent_name=agent_name,
-            timestamp=datetime.now(),
-            data=data,
-            size_bytes=size_bytes
-        )
-        
-        # Initialize session memory if needed
-        if session_id not in self._session_memory:
-            self._session_memory[session_id] = []
-            self._context_index[session_id] = {}
-        
-        # Store entry
-        self._session_memory[session_id].append(entry)
-        
-        # Update index
-        self._update_index(session_id, agent_name, context_type, entry_id)
-        
-        # Update metrics
-        self._total_entries_stored += 1
-        self._total_bytes_stored += size_bytes
-        
-        # Check if compression needed
-        if self.enable_compression:
-            self.compress_context(session_id)
-        
-        return entry_id
+        Args:
+            session_id: Session identifier
+        """
+        if session_id in self.session_memories:
+            memory_count = len(self.session_memories[session_id])
+            del self.session_memories[session_id]
+            self.stats["session_memories"] -= memory_count
+            logger.debug(f"Cleared {memory_count} memories for session {session_id}")
     
-    def _get_context_by_type(
-        self,
-        session_id: str,
-        agent_name: str,
-        context_type: ContextType
-    ) -> List[ContextEntry]:
-        """Internal method to retrieve context entries by type"""
-        if session_id not in self._session_memory:
-            return []
+    def _cleanup_session_memories(self, session_id: str):
+        """Clean up old session memories to maintain performance"""
+        session_memories = self.session_memories.get(session_id, [])
         
-        return [
-            entry for entry in self._session_memory[session_id]
-            if entry.agent_name == agent_name and entry.context_type == context_type
-        ]
-    
-    def _get_all_context_by_type(
-        self,
-        session_id: str,
-        context_type: ContextType
-    ) -> List[ContextEntry]:
-        """Internal method to retrieve all context entries of a type"""
-        if session_id not in self._session_memory:
-            return []
-        
-        return [
-            entry for entry in self._session_memory[session_id]
-            if entry.context_type == context_type
-        ]
-    
-    def _update_index(
-        self,
-        session_id: str,
-        agent_name: str,
-        context_type: ContextType,
-        entry_id: str
-    ):
-        """Update context index for fast retrieval"""
-        index_key = f"{agent_name}:{context_type.value}"
-        
-        if index_key not in self._context_index[session_id]:
-            self._context_index[session_id][index_key] = []
-        
-        self._context_index[session_id][index_key].append(entry_id)
-    
-    def _rebuild_index(self, session_id: str):
-        """Rebuild index after compression"""
-        if session_id not in self._session_memory:
-            return
-        
-        # Clear existing index
-        self._context_index[session_id] = {}
-        
-        # Rebuild from entries
-        for entry in self._session_memory[session_id]:
-            self._update_index(
-                session_id,
-                entry.agent_name,
-                entry.context_type,
-                entry.entry_id
+        if len(session_memories) > self.max_session_memories:
+            # Sort by importance and recency, keep the most important
+            session_memories.sort(
+                key=lambda m: (m.importance_score, m.created_at),
+                reverse=True
             )
+            
+            # Keep only the most important memories
+            self.session_memories[session_id] = session_memories[:self.max_session_memories]
+            
+            removed_count = len(session_memories) - self.max_session_memories
+            self.stats["session_memories"] -= removed_count
+            
+            logger.debug(f"Cleaned up {removed_count} old memories for session {session_id}")
+    
+    def cleanup_expired_memories(self):
+        """Clean up expired memories across all sessions"""
+        cutoff_date = datetime.now() - timedelta(days=self.memory_retention_days)
+        
+        # Clean up session memories
+        total_removed = 0
+        for session_id, memories in list(self.session_memories.items()):
+            original_count = len(memories)
+            
+            # Filter out expired memories
+            self.session_memories[session_id] = [
+                m for m in memories if m.created_at > cutoff_date
+            ]
+            
+            removed_count = original_count - len(self.session_memories[session_id])
+            total_removed += removed_count
+            
+            # Remove empty sessions
+            if not self.session_memories[session_id]:
+                del self.session_memories[session_id]
+        
+        # Clean up global memories
+        expired_global = [
+            memory_id for memory_id, memory in self.global_memories.items()
+            if memory.created_at < cutoff_date
+        ]
+        
+        for memory_id in expired_global:
+            del self.global_memories[memory_id]
+        
+        total_removed += len(expired_global)
+        self.stats["session_memories"] -= (total_removed - len(expired_global))
+        self.stats["global_memories"] -= len(expired_global)
+        
+        if total_removed > 0:
+            logger.info(f"Cleaned up {total_removed} expired memories")
+    
+    def get_memory_statistics(self) -> Dict[str, Any]:
+        """Get memory system statistics"""
+        return {
+            **self.stats,
+            "active_sessions": len(self.session_memories),
+            "avg_memories_per_session": (
+                sum(len(memories) for memories in self.session_memories.values()) /
+                max(len(self.session_memories), 1)
+            ),
+            "memory_retention_days": self.memory_retention_days,
+            "max_session_memories": self.max_session_memories
+        }

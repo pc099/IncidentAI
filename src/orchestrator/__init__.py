@@ -1,58 +1,22 @@
 """
-Orchestrator Module
+Enhanced Orchestrator Module
 
-This module provides the Bedrock AgentCore runtime layer components for
-managing agent execution, including configuration, session management,
-and memory management.
+Provides multi-agent orchestration with parallel processing capabilities.
 """
 
-from src.orchestrator.agentcore_config import (
-    AgentCoreConfig,
-    SessionConfig,
-    MemoryConfig,
-    SecurityConfig,
-    ObservabilityConfig,
-    SecurityPolicyLevel,
-    MemoryRetentionStrategy,
-    LogLevel,
-    get_default_config,
-    create_custom_config,
-    DEFAULT_AGENTCORE_CONFIG
-)
-
-from src.orchestrator.session_manager import (
-    SessionManager,
-    Session,
-    SessionStatus
-)
-
-from src.orchestrator.memory_manager import (
-    MemoryManager,
-    ContextEntry,
-    ContextType
-)
+from orchestrator.enhanced_orchestrator import EnhancedOrchestrator
+from orchestrator.session_manager import SessionManager, Session, SessionStatus
+from orchestrator.memory_manager import MemoryManager, MemoryType, MemoryEntry
+from orchestrator.agentcore_config import AgentCoreConfig, get_default_config
 
 __all__ = [
-    # Configuration
-    "AgentCoreConfig",
-    "SessionConfig",
-    "MemoryConfig",
-    "SecurityConfig",
-    "ObservabilityConfig",
-    "SecurityPolicyLevel",
-    "MemoryRetentionStrategy",
-    "LogLevel",
-    "get_default_config",
-    "create_custom_config",
-    "DEFAULT_AGENTCORE_CONFIG",
-    
-    # Session Management
-    "SessionManager",
-    "Session",
-    "SessionStatus",
-    
-    # Memory Management
-    "MemoryManager",
-    "ContextEntry",
-    "ContextType"
+    'EnhancedOrchestrator',
+    'SessionManager', 
+    'Session',
+    'SessionStatus',
+    'MemoryManager',
+    'MemoryType',
+    'MemoryEntry',
+    'AgentCoreConfig',
+    'get_default_config'
 ]
