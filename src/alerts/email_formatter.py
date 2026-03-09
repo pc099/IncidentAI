@@ -46,6 +46,7 @@ def format_html_email(enhanced_alert: Dict[str, Any]) -> str:
     # Extract from original alert
     original_alert = enhanced_alert.get('original_alert', {})
     service_name = original_alert.get('service_name', 'Unknown Service')
+    error_message = original_alert.get('error_message', 'No error message available')
     
     # Extract root cause information
     root_cause = enhanced_alert.get('root_cause', {})
@@ -68,11 +69,17 @@ def format_html_email(enhanced_alert: Dict[str, Any]) -> str:
     warnings = format_confidence_warning(confidence_score)
     confidence_warning_html = warnings['html']
     
-    # Format evidence items
-    if evidence:
-        evidence_html = "\n".join([f"<li>{item}</li>" for item in evidence])
+    # Format evidence items - only show section if evidence exists
+    if evidence and any(evidence):  # Check if evidence list has non-empty items
+        evidence_html = "\n".join([f"<li>{item}</li>" for item in evidence if item])
+        evidence_section = f"""
+            <h3>Evidence:</h3>
+            <ul class="evidence-list">
+                {evidence_html}
+            </ul>
+        """
     else:
-        evidence_html = "<li>No evidence available</li>"
+        evidence_section = ""  # Hide entire evidence section if empty
     
     # Format action items
     fixes = enhanced_alert.get('recommended_fixes', [])
@@ -93,7 +100,9 @@ def format_html_email(enhanced_alert: Dict[str, Any]) -> str:
     commands = []
     for action in fixes:
         if isinstance(action, dict) and 'command' in action:
-            commands.append(action['command'])
+            cmd = action['command']
+            if cmd:  # Only add non-empty commands
+                commands.append(cmd)
     
     if commands:
         commands_html = "\n".join(commands)
@@ -109,14 +118,19 @@ def format_html_email(enhanced_alert: Dict[str, Any]) -> str:
         business_impact = str(business_summary) if business_summary else 'Impact assessment not available'
         estimated_time = 'Unknown'
     
-    # Format similar incidents
+    # Format similar incidents - check root_cause directly (orchestrator stores it there)
     similar_incidents = []
-    agent_outputs = enhanced_alert.get('agent_outputs', {})
-    root_cause_output = agent_outputs.get('root-cause', {})
-    if root_cause_output and root_cause_output.get('success'):
-        root_cause_data = root_cause_output.get('output', {})
-        if isinstance(root_cause_data, dict):
-            similar_incidents = root_cause_data.get('similar_incidents', [])
+    if isinstance(root_cause, dict):
+        similar_incidents = root_cause.get('similar_incidents', [])
+    
+    # Fallback: check agent_outputs (legacy)
+    if not similar_incidents:
+        agent_outputs = enhanced_alert.get('agent_outputs', {})
+        root_cause_output = agent_outputs.get('root-cause', {})
+        if root_cause_output and root_cause_output.get('success'):
+            root_cause_data = root_cause_output.get('output', {})
+            if isinstance(root_cause_data, dict):
+                similar_incidents = root_cause_data.get('similar_incidents', [])
     
     if similar_incidents:
         similar_html = "\n".join([
@@ -130,12 +144,13 @@ def format_html_email(enhanced_alert: Dict[str, Any]) -> str:
         incident_id=incident_id,
         service_name=service_name,
         timestamp=timestamp,
+        error_message=error_message,
         confidence_warning=confidence_warning_html,
         root_cause_category=root_cause_category,
         root_cause_description=root_cause_description,
         confidence_score=confidence_score,
         confidence_level=confidence_level,
-        evidence_items=evidence_html,
+        evidence_section=evidence_section,
         action_items=actions_html,
         commands=commands_html,
         business_summary=business_impact,
@@ -165,6 +180,7 @@ def format_text_email(enhanced_alert: Dict[str, Any]) -> str:
     # Extract from original alert
     original_alert = enhanced_alert.get('original_alert', {})
     service_name = original_alert.get('service_name', 'Unknown Service')
+    error_message = original_alert.get('error_message', 'No error message available')
     
     # Extract root cause information
     root_cause = enhanced_alert.get('root_cause', {})
@@ -186,11 +202,12 @@ def format_text_email(enhanced_alert: Dict[str, Any]) -> str:
     warnings = format_confidence_warning(confidence_score)
     confidence_warning_text = warnings['text']
     
-    # Format evidence items
-    if evidence:
-        evidence_text = "\n".join([f"- {item}" for item in evidence])
+    # Format evidence items - only show section if evidence exists
+    if evidence and any(evidence):  # Check if evidence list has non-empty items
+        evidence_text = "\n".join([f"- {item}" for item in evidence if item])
+        evidence_section = f"\n\nEVIDENCE:\n{evidence_text}"
     else:
-        evidence_text = "- No evidence available"
+        evidence_section = ""  # Hide entire evidence section if empty
     
     # Format action items
     fixes = enhanced_alert.get('recommended_fixes', [])
@@ -211,7 +228,9 @@ def format_text_email(enhanced_alert: Dict[str, Any]) -> str:
     commands = []
     for action in fixes:
         if isinstance(action, dict) and 'command' in action:
-            commands.append(action['command'])
+            cmd = action['command']
+            if cmd:  # Only add non-empty commands
+                commands.append(cmd)
     
     if commands:
         commands_text = "\n".join(commands)
@@ -227,14 +246,19 @@ def format_text_email(enhanced_alert: Dict[str, Any]) -> str:
         business_impact = str(business_summary) if business_summary else 'Impact assessment not available'
         estimated_time = 'Unknown'
     
-    # Format similar incidents
+    # Format similar incidents - check root_cause directly (orchestrator stores it there)
     similar_incidents = []
-    agent_outputs = enhanced_alert.get('agent_outputs', {})
-    root_cause_output = agent_outputs.get('root-cause', {})
-    if root_cause_output and root_cause_output.get('success'):
-        root_cause_data = root_cause_output.get('output', {})
-        if isinstance(root_cause_data, dict):
-            similar_incidents = root_cause_data.get('similar_incidents', [])
+    if isinstance(root_cause, dict):
+        similar_incidents = root_cause.get('similar_incidents', [])
+    
+    # Fallback: check agent_outputs (legacy)
+    if not similar_incidents:
+        agent_outputs = enhanced_alert.get('agent_outputs', {})
+        root_cause_output = agent_outputs.get('root-cause', {})
+        if root_cause_output and root_cause_output.get('success'):
+            root_cause_data = root_cause_output.get('output', {})
+            if isinstance(root_cause_data, dict):
+                similar_incidents = root_cause_data.get('similar_incidents', [])
     
     if similar_incidents:
         similar_text = "\n".join([
@@ -248,11 +272,12 @@ def format_text_email(enhanced_alert: Dict[str, Any]) -> str:
         incident_id=incident_id,
         service_name=service_name,
         timestamp=timestamp,
+        error_message=error_message,
         confidence_warning=confidence_warning_text,
         root_cause_category=root_cause_category,
         root_cause_description=root_cause_description,
         confidence_score=confidence_score,
-        evidence_items=evidence_text,
+        evidence_section=evidence_section,
         action_items=actions_text,
         commands=commands_text,
         business_summary=business_impact,
@@ -279,3 +304,4 @@ def format_email(enhanced_alert: Dict[str, Any]) -> Tuple[str, str]:
     text_content = format_text_email(enhanced_alert)
     
     return html_content, text_content
+

@@ -398,9 +398,15 @@ class FixRecommendationAgent:
         Returns:
             Dictionary containing immediate actions, preventive measures, and rollback plan
         """
-        category = root_cause.get("primary_cause", {}).get("category", "unknown")
-        description = root_cause.get("primary_cause", {}).get("description", "")
-        evidence = root_cause.get("primary_cause", {}).get("evidence", [])
+        # Handle both direct and nested structures
+        if "analysis" in root_cause:
+            primary_cause = root_cause.get("analysis", {}).get("primary_cause", {})
+        else:
+            primary_cause = root_cause.get("primary_cause", {})
+        
+        category = primary_cause.get("category", "unknown")
+        description = primary_cause.get("description", "")
+        evidence = primary_cause.get("evidence", [])
         
         # Check for AWS-specific fixes first
         aws_result = self._get_aws_specific_fixes(description, evidence, service_name, category)
@@ -822,7 +828,7 @@ class BedrockFixRecommendationGenerator:
     Requirements: 4.1, 4.2, 4.6, 4.7
     """
     
-    def __init__(self, bedrock_model_id: str = "anthropic.claude-3-5-sonnet-20241022-v2:0"):
+    def __init__(self, bedrock_model_id: str = "anthropic.claude-3-haiku-20240307-v1:0"):
         """
         Initialize Bedrock fix recommendation generator.
         

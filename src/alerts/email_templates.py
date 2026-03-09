@@ -36,7 +36,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }}
         .header {{
-            background-color: #d32f2f;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
             padding: 30px 20px;
             text-align: center;
@@ -48,6 +48,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         .header .metadata {{
             font-size: 14px;
             opacity: 0.9;
+            color: #000000;
         }}
         .section {{
             margin: 0;
@@ -60,7 +61,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         .section h2 {{
             margin: 0 0 15px 0;
             font-size: 20px;
-            color: #1976d2;
+            color: #000000;
         }}
         .section h3 {{
             margin: 15px 0 10px 0;
@@ -151,15 +152,17 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         {confidence_warning}
         
         <div class="section">
+            <h2>Error Details</h2>
+            <p><strong>Error Message:</strong></p>
+            <div class="command">{error_message}</div>
+        </div>
+        
+        <div class="section">
             <h2>Root Cause Analysis</h2>
             <p><strong>Category:</strong> {root_cause_category}</p>
             <p><strong>Description:</strong> {root_cause_description}</p>
             <p><strong>Confidence:</strong> <span class="confidence-{confidence_level}">{confidence_score}%</span></p>
-            
-            <h3>Evidence:</h3>
-            <ul class="evidence-list">
-                {evidence_items}
-            </ul>
+            {evidence_section}
         </div>
         
         <div class="section">
@@ -205,13 +208,14 @@ Time: {timestamp}
 
 {confidence_warning}
 
+ERROR DETAILS:
+--------------------------------------------------------------------------------
+{error_message}
+
 ROOT CAUSE ({confidence_score}% confidence):
 --------------------------------------------------------------------------------
 Category: {root_cause_category}
-Description: {root_cause_description}
-
-EVIDENCE:
-{evidence_items}
+Description: {root_cause_description}{evidence_section}
 
 IMMEDIATE ACTIONS:
 --------------------------------------------------------------------------------
@@ -330,18 +334,24 @@ def format_similar_incident_html(incident: Dict[str, Any]) -> str:
     Format a similar incident as HTML.
     
     Args:
-        incident: Incident dictionary with incident_id, similarity_score, resolution
+        incident: Incident dictionary with incident_id, timestamp, resolution, resolution_time
     
     Returns:
         HTML formatted similar incident
     """
-    similarity_pct = int(incident.get('similarity_score', 0) * 100)
+    # Extract date from timestamp
+    timestamp = incident.get('timestamp', '')
+    date_str = timestamp[:10] if timestamp else 'Unknown date'
+    
     return f"""
     <div class="similar-incident">
-        <strong>{incident.get('incident_id', 'Unknown')}</strong> 
-        (Similarity: {similarity_pct}%)
+        📋 <strong>{incident.get('incident_id', 'Unknown')}</strong>
         <br>
-        <span class="metadata">Resolution: {incident.get('resolution', 'No resolution recorded')}</span>
+        <span class="metadata">
+            Date: {date_str} | 
+            Resolution: {incident.get('resolution', 'No resolution recorded')} | 
+            Time to Resolve: {incident.get('resolution_time', 'Unknown')}
+        </span>
     </div>
     """
 
@@ -351,10 +361,12 @@ def format_similar_incident_text(incident: Dict[str, Any]) -> str:
     Format a similar incident as plain text.
     
     Args:
-        incident: Incident dictionary with incident_id, similarity_score, resolution
+        incident: Incident dictionary with incident_id, timestamp, resolution, resolution_time
     
     Returns:
         Plain text formatted similar incident
     """
-    similarity_pct = int(incident.get('similarity_score', 0) * 100)
-    return f"• {incident.get('incident_id', 'Unknown')} (Similarity: {similarity_pct}%) - {incident.get('resolution', 'No resolution recorded')}"
+    timestamp = incident.get('timestamp', '')
+    date_str = timestamp[:10] if timestamp else 'Unknown date'
+    
+    return f"• {incident.get('incident_id', 'Unknown')} ({date_str}) - {incident.get('resolution', 'No resolution recorded')} - Resolved in {incident.get('resolution_time', 'Unknown')}"

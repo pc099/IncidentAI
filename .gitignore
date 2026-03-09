@@ -48,3 +48,10 @@ htmlcov/
 
 # Logs
 *.log
+
+# Documentation and Images (exclude from repo)
+*.md
+*.png
+*.jpg
+*.jpeg
+*.gif

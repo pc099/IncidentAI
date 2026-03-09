@@ -1,0 +1,3 @@
+# Minimal requirements for Lambda deployment
+boto3>=1.28.0
+aws-lambda-powertools>=2.20.0

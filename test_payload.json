@@ -1,0 +1,8 @@
+{
+  "body": "{\"service_name\": \"payment-api-gateway\", \"timestamp\": \"2026-03-09T06:00:00Z\", \"error_message\": \"API Gateway timeout\", \"log_location\": \"s3://incident-response-logs-867126415696/logs/test.log\", \"alert_source\": \"CloudWatch\"}",
+  "headers": {
+    "Content-Type": "application/json"
+  },
+  "httpMethod": "POST",
+  "path": "/incidents"
+}

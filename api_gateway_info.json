@@ -1,0 +1,8 @@
+{
+  "endpoint": "https://v5uxu396ik.execute-api.us-east-1.amazonaws.com/prod/incidents",
+  "api_key": "p7klzM6d693vg385sTqF161efhNznil72G8yfshx",
+  "api_id": "v5uxu396ik",
+  "stage": "prod",
+  "usage_plan_id": "pkfdcd",
+  "region": "us-east-1"
+}

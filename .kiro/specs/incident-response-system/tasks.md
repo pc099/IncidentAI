@@ -16,7 +16,7 @@ This implementation plan breaks down the AI-Powered Incident Response System int
   - Create IAM roles with least-privilege permissions for Lambda functions
   - _Requirements: 10.1, 10.2, 13.2, 13.3_
 
-- [ ] 2. Configure Bedrock Knowledge Base for RAG
+- [x] 2. Configure Bedrock Knowledge Base for RAG
   - [x] 2.1 Create S3 bucket for Knowledge Base data source
     - Create bucket with versioning enabled
     - Configure bucket policy for Bedrock access
@@ -36,7 +36,7 @@ This implementation plan breaks down the AI-Powered Incident Response System int
     - Trigger Knowledge Base ingestion job
     - _Requirements: 3.5, 3.6, 11.1, 11.2, 11.3_
 
-- [-] 3. Implement API Gateway endpoint and request validation
+- [x] 3. Implement API Gateway endpoint and request validation
   - [x] 3.1 Create API Gateway REST API with /incidents endpoint
     - Configure POST method with JSON request body
     - Set up API key authentication
@@ -176,7 +176,7 @@ This implementation plan breaks down the AI-Powered Incident Response System int
     - Test Step Functions execution failure classification
     - _Requirements: 11.1, 11.2, 11.3, 11.4, 11.5, 11.6_
 
-- [-] 8. Implement Fix Recommendation Agent
+- [x] 8. Implement Fix Recommendation Agent
   - [x] 8.1 Create fix template mapping by root cause category
     - Configuration error templates: identify parameter, provide correct value, show update command
     - Resource exhaustion templates: identify resource, calculate scaling (2x), provide scaling commands
@@ -203,7 +203,7 @@ This implementation plan breaks down the AI-Powered Incident Response System int
     - **Property 12: Fix Recommendation Count**
     - **Validates: Requirements 4.2**
   
-  - [-] 8.5 Write property test for category-specific fix content
+  - [x] 8.5 Write property test for category-specific fix content
     - **Property 13: Category-Specific Fix Content**
     - **Validates: Requirements 4.3, 4.4, 4.5**
   
@@ -486,7 +486,7 @@ This implementation plan breaks down the AI-Powered Incident Response System int
     - Trigger Knowledge Base sync
     - _Requirements: 3.5, 3.6_
 
-- [-] 18. Integration testing with AWS services
+- [x] 18. Integration testing with AWS services
   - [x] 18.1 Write integration test for API Gateway to Orchestrator
     - Test valid request triggers orchestrator within 2 seconds
     - Test invalid request returns 400 with error details

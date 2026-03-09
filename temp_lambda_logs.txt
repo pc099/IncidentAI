@@ -1,0 +1,26 @@
+﻿Latest log stream: 2026/03/09/[$LATEST]17b49c14f7834fb2b7d67c82b998a23f
+================================================================================
+INIT_START Runtime Version: python:3.11.mainlinev2.v3	Runtime Version ARN: arn:aws:lambda:us-east-1::runtime:0de7d4de4aef04631dc8443fb686ab8bf14de4d4a348cb0d407cce5f48aef7d8
+START RequestId: 24b79fcf-c791-4f0d-97f5-3639a237a26c Version: $LATEST
+Starting orchestration for incident: inc-2026-03-09-6a4ddc15
+Executing Log Analysis Agent...
+ Log Analysis complete
+Executing Root Cause Analysis...
+ Root Cause Analysis complete
+Executing Fix Recommendation Agent...
+ Fix Recommendations complete
+Executing Communication Agent...
+ Communication complete
+Sending email alert...
+[INFO]	2026-03-09T08:12:27.210Z	24b79fcf-c791-4f0d-97f5-3639a237a26c	Initialized SESDeliveryService: sender=harshavignesh1@gmail.com, region=us-east-1, max_retries=3
+[INFO]	2026-03-09T08:12:27.210Z	24b79fcf-c791-4f0d-97f5-3639a237a26c	Starting email delivery for incident: inc-2026-03-09-670ae0e5
+[INFO]	2026-03-09T08:12:27.210Z	24b79fcf-c791-4f0d-97f5-3639a237a26c	Delivery attempt 1/4 for incident: inc-2026-03-09-670ae0e5
+[INFO]	2026-03-09T08:12:27.367Z	24b79fcf-c791-4f0d-97f5-3639a237a26c	Email delivered successfully for incident: inc-2026-03-09-670ae0e5, message_id=0100019cd1a7971e-9487ccf3-f1b1-4f7e-a1c8-a87e4323539c-000000, delivery_time=0.16s
+ Email alert sent (MessageId: 0100019cd1a7971e-9487ccf3-f1b1-4f7e-a1c8-a87e4323539c-000000)
+[INFO]	2026-03-09T08:12:27.526Z	24b79fcf-c791-4f0d-97f5-3639a237a26c	Initialized IncidentStorage: table=incident-history, region=us-east-1, ttl_days=90
+[INFO]	2026-03-09T08:12:27.526Z	24b79fcf-c791-4f0d-97f5-3639a237a26c	Storing incident: inc-2026-03-09-670ae0e5
+[INFO]	2026-03-09T08:12:27.604Z	24b79fcf-c791-4f0d-97f5-3639a237a26c	Successfully stored incident: inc-2026-03-09-670ae0e5
+ Stored incident in DynamoDB
+Orchestration complete for incident: inc-2026-03-09-6a4ddc15
+END RequestId: 24b79fcf-c791-4f0d-97f5-3639a237a26c
+REPORT RequestId: 24b79fcf-c791-4f0d-97f5-3639a237a26c	Duration: 8300.20 ms	Billed Duration: 8654 ms	Memory Size: 512 MB	Max Memory Used: 104 MB	Init Duration: 353.28 ms

@@ -241,17 +241,22 @@ class TestProperty2_AlertPayloadValidation:
         assert error is not None
     
     @given(
-        st.text(min_size=1, max_size=100).filter(lambda x: not x.startswith("s3://") and x.strip())
+        st.text(min_size=1, max_size=100).filter(
+            lambda x: not x.startswith("s3://")
+        )
     )
     def test_non_s3_uri_fails(self, non_s3_uri):
         """
         Property: Any log_location not starting with 's3://' should fail validation.
         Validates: Requirement 1.4 - return 400 for malformed payloads
+        
+        Note: Whitespace-only strings are caught by the empty check before the S3 URI check.
         """
         is_valid, error = validate_log_location(non_s3_uri)
         assert is_valid is False
         assert error is not None
-        assert "S3 URI" in error
+        # Error can be either "S3 URI" (for non-S3 URIs) or "empty" (for whitespace-only strings)
+        assert "S3 URI" in error or "empty" in error
     
     @given(
         st.one_of(
@@ -342,14 +347,22 @@ class TestProperty2_AlertPayloadValidation:
         assert len(parts[4]) == 8  # UUID prefix
     
     @given(
-        st.text(min_size=1, max_size=1000).filter(
-            lambda x: not (x.strip().startswith('{') or x.strip().startswith('['))
+        st.one_of(
+            # Truly malformed JSON that won't parse
+            st.text(min_size=1, max_size=1000).filter(
+                lambda x: not (x.strip().startswith('{') or x.strip().startswith('[') or x.strip() in ['true', 'false', 'null'] or x.strip().replace('.', '').replace('-', '').replace('+', '').replace('e', '').replace('E', '').isdigit() or (x.strip().startswith('"') and x.strip().endswith('"')))
+            ),
+            # Valid JSON primitives (numbers, booleans, strings, null) that aren't objects
+            st.sampled_from(['0', '1', '-1', '3.14', 'true', 'false', 'null', '"test"', '[]'])
         )
     )
     def test_malformed_json_returns_400(self, malformed_json):
         """
-        Property: Any malformed JSON should return 400 Bad Request.
+        Property: Any malformed JSON or non-object JSON should return 400 Bad Request.
         Validates: Requirement 1.4 - return 400 for malformed payloads
+        
+        Note: Valid JSON primitives (e.g., '0', 'true', '"string"') parse successfully
+        but fail the "must be JSON object" check, which is correct behavior.
         """
         event = {
             "headers": {
@@ -362,11 +375,16 @@ class TestProperty2_AlertPayloadValidation:
         }
         response = lambda_handler(event, None)
         
-        # Should return 400 for invalid JSON
+        # Should return 400 for invalid JSON or non-object JSON
         assert response["statusCode"] == 400
         body = json.loads(response["body"])
         assert "error" in body
-        assert "Invalid JSON" in body["details"] or "Missing required fields" in body["details"] or "JSON object" in body["details"]
+        # Accept any of these error messages as valid 400 responses
+        assert any(phrase in body["details"] for phrase in [
+            "Invalid JSON",           # JSONDecodeError
+            "JSON object",            # Valid JSON but not an object
+            "Missing required fields" # Valid object but missing fields
+        ])
     
     @given(valid_payload())
     def test_context_preserves_all_payload_data(self, payload):
